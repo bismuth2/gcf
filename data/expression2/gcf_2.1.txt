@@ -1,0 +1,383 @@
+# Feature: Add chat loopback mode
+# Feature: encryption
+# Feature: press key to ping enemy, output coordinate
+
+@name GCF 2.1
+@inputs EGP:wirelink
+@outputs 
+@persist [CONFIG, UI]:table
+@persist Hash:string [GlobalUsers, LocalUsers, Chats]:table SelectedPage:number
+@strict
+
+#include "six_lib_1.1"
+if( first() | dupefinished() )
+{
+    CONFIG = table(
+        "Chat loopback" = 0,
+        "Auto-join"     = 1,
+        "Channel"       = "123.4",
+        "Token"         = "/",
+        "Block SteamID" = table(
+            "STEAM_0:1:666" = 1
+        )
+    )
+    
+    UI = table(
+        "Chat flag"   = "flags16/us.png",
+        "Chat font"   = "Roboto",
+        "Chat size"   = 16,
+        "BG mat"      = "console/background03",
+        "BG col"      = vec4(87,0,67,128),
+        "FG mat"      = "console/background03",
+        "FG col"      = vec4(0,128,0,128),
+        "Grad col"    = vec4(87,128,67,128)
+    )
+    
+    Hash         = hashSHA256(CONFIG["Channel",string])
+    GlobalUsers  = table()
+    LocalUsers   = table()
+    Chats        = table(1=table())
+    SelectedPage = 1
+}
+
+function void egpDrawBG()
+{
+    # BG
+    local BG = egpMake("BG")
+    EGP:egpBox(BG, vec2(0,0), vec2(512,512))
+    EGP:egpMaterial(BG, UI["BG mat",string])
+    EGP:egpColor(BG, UI["BG col",vector4])
+    
+    # FG
+    local FG = egpMake("FG")
+    EGP:egpBox(FG, vec2(12,42), vec2(512,512) - vec2(24,54))
+    EGP:egpMaterial(FG, UI["FG mat",string])
+    EGP:egpColor(FG, UI["FG col",vector4])
+    
+    # Gradient
+    local Grad = egpMake("Gradient")
+    local Size_x = EGP:egpSize(egpObj("FG"))[1]
+    EGP:egpBox(Grad, vec2(12,12), vec2(Size_x,24))
+    EGP:egpMaterial(Grad, "gui/gradient")
+    EGP:egpColor(Grad, UI["Grad col",vector4])
+}
+
+function void egpDrawHeader()
+{
+    # Refresh button
+    local Refresh = egpMakeButton("Refresh")
+    EGP:egpBox(Refresh, vec2(12,12), vec2(24,24))
+    EGP:egpMaterial(Refresh, "gui/html/refresh")
+    
+    # Page left
+    local Page_left = egpMakeButton("Page_left")
+    EGP:egpBox(Page_left, vec2(512,12) - vec2(37,0)*3, vec2(24,24))
+    EGP:egpMaterial(Page_left, "gui/html/back")
+    
+    # Cur page
+    local Page_cur = egpMake("Page_cur")
+    local Page_display = SelectedPage + "/" + Chats:count()
+    EGP:egpTextLayout(Page_cur, Page_display, vec2(512,18) - vec2(86,6), vec2(48,24))
+    EGP:egpFont(Page_cur, UI["Chat font",string], 12)
+    EGP:egpAlign(Page_cur, 1, 1)
+    
+    # Page right
+    local Page_right = egpMakeButton("Page_right")
+    EGP:egpBox(Page_right, vec2(512,12) - vec2(37,0), vec2(24,24))
+    EGP:egpMaterial(Page_right, "gui/html/forward")
+}
+
+function void egpDrawChat()
+{
+    local Page_display = SelectedPage + "/" + Chats:count()
+    EGP:egpSetText(egpObj("Page_cur"), Page_display)
+    
+    # Display chats from our current page
+    for(I=1, Chats[SelectedPage,table]:count(), 1)
+    {
+        local Data     = Chats[SelectedPage,table][I,array]
+        local Ply_name = Data[1,string]
+        local Ply_flag = Data[2,string]
+        local Ply_chat = Data[3,string]
+        
+        local Parent      = egpObj("FG")
+        local Parent_size = EGP:egpSize(Parent)
+        
+        local Index = I * 2
+        local Pos_y = (I * Parent_size[2]/12) - Parent_size[2]/12
+        EGP:egpBox(Index, vec2(0,4 + Pos_y), vec2(12,12))
+        EGP:egpMaterial(Index, Ply_flag)
+        EGP:egpParent(Index, Parent)
+        
+        local Str = Ply_name + Ply_chat
+        EGP:egpTextLayout(Index-1, Str, vec2(16,Pos_y), vec2(Parent_size[1]-16, Parent_size[2]/12))
+        EGP:egpFont(Index-1, UI["Chat font",string], UI["Chat size",number])
+        EGP:egpAlign(Index-1, 0, 0)
+        EGP:egpParent(Index-1, Parent)
+    }
+}
+
+function void egpDrawCursor()
+{
+    # Cursor
+    local Cursor = egpMake("Cursor")
+    EGP:egpBox(Cursor, vec2(0,0), vec2(16,16))
+    EGP:egpMaterial(Cursor, "icon16/cursor.png")
+    EGP:egpParentToCursor(Cursor)
+}
+
+function void egpDrawAll()
+{
+    EGP:egpClear()
+    EGP:egpDrawTopLeft(1)
+    EGP:egpGlobalFiltering(_TEXFILTER_LINEAR)
+    
+    egpClearObjects()
+    egpDrawBG()
+    egpDrawHeader()
+    egpDrawChat()
+    egpDrawCursor()
+}
+
+egpDrawAll()
+
+const ButtonFunc = table()
+ButtonFunc["Refresh", function] = function(Status:number, Button:number)
+{
+    if( Status )
+    {
+        EGP:egpColor(Button, vec4(192,192,192,192))
+    }
+    else
+    {
+        egpDrawAll()
+    }
+}
+
+ButtonFunc["Page_left", function] = function(Status:number, Button:number)
+{
+    if( Status )
+    {
+        SelectedPage--
+        SelectedPage = clamp(SelectedPage, 1, Chats:count())
+        EGP:egpColor(Button, vec4(192,192,192,192))
+    }
+    else
+    {
+        egpDrawAll()
+    }
+}
+
+ButtonFunc["Page_right", function] = function(Status:number, Button:number)
+{
+    if( Status )
+    {
+        SelectedPage++
+        SelectedPage = clamp(SelectedPage, 1, Chats:count())
+        EGP:egpColor(Button, vec4(192,192,192,192))
+    }
+    else
+    {
+        egpDrawAll()
+    }
+}
+
+function gcfAddChat(Ply_name:string, Ply_flag:string, Ply_msg:string)
+{
+    # Package our chat data
+    local Chat_data = array(Ply_name, Ply_flag, Ply_msg)
+    
+    # If our latest page has more than 12 chats, create a new page
+    if( Chats[Chats:count(),table]:count() >= 12 )
+    {
+        Chats:pushTable(table())
+    }
+    
+    # Add our current chat to the newest page
+    Chats[Chats:count(),table]:pushArray(Chat_data)
+    
+    # Make our display page the newest
+    SelectedPage = Chats:count()
+    egpDrawAll()
+    
+    if( CONFIG["Chat loopback",number] )
+    {
+        print(Ply_name + Ply_msg)
+    }
+}
+
+function gcfPacket(Command:string)
+{
+    return table(
+        "Hash" = Hash,
+        "Name" = E2_OWNER_NAME,
+        "Ply"  = owner(),
+        "Ent"  = entity(),
+        "Cmd"  = Command
+    )
+}
+
+function gcfBroadcast(Packet:table)
+{
+    broadcastRemoteEvent(Packet)
+}
+
+function gcfSend(Packet:table, Realm:table)
+{
+    foreach(_:string, V:entity = Realm)
+    {
+        V:sendRemoteEvent(Packet)
+    }
+}
+
+function gcfWhisper(Packet:table, User:entity)
+{
+    User:sendRemoteEvent(Packet)
+}
+
+const SysFunc = table()
+SysFunc["ping", function] = function(Type:string)
+{
+    local Packet = gcfPacket("ping")
+    Packet["Type",string] = Type
+    gcfBroadcast(Packet)
+}
+
+const SendFunc = table()
+SendFunc["join description",string] = CONFIG["Token",string] + "join 123.4 pw (Joins channel 123.4 with password pw)"
+SendFunc["join", function] = function(Command:string, Data:array)
+{
+    CONFIG["Channel",string] = Data[1,string] ?: CONFIG["Channel",string]
+    Hash                     = CONFIG["Channel",string]
+    
+    local Packet = gcfPacket(Command)
+    Packet["Flag",string] = UI["Chat flag",string]
+    Packet["Chat",string] = "has joined the channel!"
+    gcfSend(Packet, GlobalUsers)
+    gcfAddChat(E2_NAME, "icon16/arrow_right.png", "Joined channel " + CONFIG["Channel",string])
+}
+
+SendFunc["chat description",string] = CONFIG["Token",string] + "chat msg (Sends a chat message to all users in your channel)"
+SendFunc["chat", function] = function(Command:string, Data:array)
+{
+    if( Data:exists(1) & GlobalUsers:count() >= 1 )
+    {
+        local Packet = gcfPacket(Command)
+        Packet["Flag",string] = UI["Chat flag",string]
+        Packet["Chat",string] = Data:concat(" ")
+        gcfSend(Packet, LocalUsers)
+        gcfAddChat(Packet["Name",string], Packet["Flag",string], Packet["Chat",string])
+    }
+}
+
+SendFunc["help description",string] = CONFIG["Token",string] + "help "
+SendFunc["help", function] = function(_:string, _:array)
+{
+    
+}
+
+const RecieveFunc = table()
+RecieveFunc["ping", function] = function(Packet:table)
+{
+    local Type  = Packet["Type",string]
+    local User  = Packet["Ent",entity]
+    local Index = User:toString()
+    
+    if( Type == "Connect" & !GlobalUsers:exists(Index) )
+    {
+        GlobalUsers[Index,entity] = User
+        gcfWhisper(gcfPacket("ping"), User)
+    }
+    
+    if( Type == "Disconnect" & GlobalUsers:exists(Index) )
+    {
+        GlobalUsers:remove(Index)
+    }
+    
+    if( GlobalUsers:count() == 0 )
+    {
+        gcfAddChat(E2_NAME, "gui/info", "No users online found.")
+    }
+}
+
+RecieveFunc["chat", function] = function(Packet:table)
+{
+    if( Packet["Hash",string] == Hash )
+    {
+        gcfAddChat(Packet["Name",string], Packet["Flag",string], Packet["Chat",string])
+    }
+}
+
+event keyPressed(Player:entity, Key:string, Down:number, Bind:string)
+{
+    if( Player == owner() & Key == "mouse_right" & EGP:egpCursor(Player) != vec2(-1,-1) )
+    {
+        foreach(Name:string, Button:number = EGPB)
+        {
+            if(EGP:egpObjectContainsPoint(Button, EGP:egpCursor(Player)))
+            {
+                if(ButtonFunc:exists(Name))
+                {
+                    ButtonFunc[Name, function](Down, Button)
+                }
+            }
+        }
+    }
+}
+
+event chat(Player:entity, Message:string, _:number)
+{
+    if( Player == owner() & Message:sub(1,1) == CONFIG["Token",string] )
+    {
+        hideChat(1)
+        local Msg  = Message:explode(" ") #Explode our Msg into array("/cmd", "foo", "bar")
+        local Cmd  = Msg[1,string]:sub(2) #Remove the Token from our cmd as it may be different on other clients
+        Msg:removeString(1)               #Remove the cmd from our Msg
+        if(!SendFunc:exists(Cmd))
+        {
+            fancyPrint("Unknown command '" + Cmd + "' Type " + CONFIG["Token",string] + "help for command list.")
+        }
+        else
+        {
+            SendFunc[Cmd, function](Cmd, Msg)
+        }
+    }
+}
+
+event remote(Sender:entity, Player:entity, Packet:table)
+{
+    if( !CONFIG["Block SteamID",table][Player:steamID(),number] & Packet["Ent",entity] == Sender & Packet["Ply",entity] == Player & Packet["Hash",string] == Hash )
+    {
+        local Cmd = Packet["Cmd",string]
+        if(RecieveFunc:exists(Cmd))
+        {
+            RecieveFunc[Cmd, function](Packet)
+        }
+    }
+}
+
+gcfAddChat(E2_NAME, "icon16/arrow_right.png", "Discovering available clients...")
+SysFunc["ping", function]("Connect")
+
+timer(3, 0, function()
+{
+    SysFunc["ping", function]("Connect")
+})
+
+timer(4, function()
+{
+    gcfAddChat(E2_NAME, "icon16/arrow_left.png", "Found " + GlobalUsers:count() + " users!")
+})
+
+timer(5, function()
+{
+    if( CONFIG["Auto-join",number] & GlobalUsers:count() >= 1 )
+    {
+        SendFunc["join", function]("join", array())
+    }
+})
+
+event removed(Resetting:number)
+{
+    SysFunc["ping", function]("Disconnect")
+}
