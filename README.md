@@ -17,6 +17,7 @@ Wire the chip a EGP screen and type /chat msg to send a chat.
 * Simple P2P network that automatically sends packets with guranteed structure
 * Sending and recieving function tables to easily add more functionality
 * A user customizable table to change the appearance and chat usage
+* A history system that automatically creates new pages to store chat messages
 
 ## IMAGES
 ![Chat](https://images.steamusercontent.com/ugc/15349967649833397801/1102BBCB9318F512D72A74FF860D003D44756640/)
