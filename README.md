@@ -10,8 +10,8 @@ Download the Project and install into:
 C:\Program Files (x86)\Steam\steamapps\common\GarrysMod\garrysmod\
 
 ## IN-GAME USAGE
-Wire the chip a EGP screen and type /chat msg to send a chat.
-/join "channelHere" "passwordHere" to join a new channel
+* Wire the chip a EGP screen and type /chat msg to send a chat
+* /join "channelHere" "passwordHere" to join a new channel
 
 ## FEATURES
 * Simple P2P network that automatically sends packets with guranteed structure
